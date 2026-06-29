@@ -1,0 +1,59 @@
+# ── Secrets (JANGAN PERNAH commit) ───────────────────────────────────────────
+.env
+.env.local
+.env.production
+.env.development.local
+.env.test.local
+.env.production.local
+agri_config.json
+
+# ── Database lokal ───────────────────────────────────────────────────────────
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# ── ML Model artifacts (train locally, never commit) ────────────────────────
+*.pkl
+*.model
+*.joblib
+
+# ── Runtime / state ──────────────────────────────────────────────────────────
+aruna_state.json
+*.log
+*.log.*
+
+# ── Next.js / Node.js ────────────────────────────────────────────────────────
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+frontend/.vercel/
+node_modules/
+.npm
+
+# ── Railway / deployment ─────────────────────────────────────────────────────
+.railway/
+
+# ── IDE ──────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
