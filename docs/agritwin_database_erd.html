@@ -1,0 +1,197 @@
+<style>
+#erd { padding: 1rem 0; overflow-x: auto; }
+#erd svg.erDiagram .divider path { stroke-opacity: 0.5; }
+#erd svg.erDiagram .row-rect-odd path,
+#erd svg.erDiagram .row-rect-odd rect,
+#erd svg.erDiagram .row-rect-even path,
+#erd svg.erDiagram .row-rect-even rect { stroke: none !important; }
+</style>
+<div id="erd"></div>
+<script type="module">
+import mermaid from 'https://esm.sh/mermaid@11/dist/mermaid.esm.min.mjs';
+const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+await document.fonts.ready;
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'base',
+  fontFamily: '"Anthropic Sans", sans-serif',
+  themeVariables: {
+    darkMode: dark,
+    fontSize: '13px',
+    fontFamily: '"Anthropic Sans", sans-serif',
+    lineColor: dark ? '#9c9a92' : '#73726c',
+    textColor: dark ? '#c2c0b6' : '#3d3d3a',
+  },
+});
+const { svg } = await mermaid.render('erd-svg', `erDiagram
+  ORGANIZATIONS ||--o{ USERS : has
+  ORGANIZATIONS ||--o{ GREENHOUSES : owns
+  ORGANIZATIONS ||--o{ NOTIFICATION_CHANNELS : configures
+  GREENHOUSES ||--o{ ZONES : contains
+  GREENHOUSES ||--o{ WEATHER_SNAPSHOTS : tracks
+  GREENHOUSES ||--o{ CARBON_RECORDS : reports
+  GREENHOUSES ||--o{ AUDIT_BLOCKS : logs
+  CROPS ||--o{ ZONES : planted_in
+  CROPS ||--o{ PLANTINGS : grows
+  CROPS ||--o{ MARKET_PRICES : priced
+  ZONES ||--o{ PLANTINGS : holds
+  ZONES ||--o{ SENSOR_READINGS : measures
+  ZONES ||--o{ FLOW_METER_LOG : monitors
+  ZONES ||--o{ ACTUATOR_EVENTS : commands
+  ZONES ||--o{ ALERT_RULES : defines
+  ZONES ||--o{ ALERTS : raises
+  ZONES ||--o{ AI_QUERIES : queried
+  PLANTINGS ||--o{ VERNALIZATION_LOG : accumulates
+  ALERT_RULES ||--o{ ALERTS : triggers
+  NOTIFICATION_CHANNELS ||--o{ NOTIFICATION_LOG : sends
+  USERS ||--o{ AI_QUERIES : asks
+  KNOWLEDGE_DOCUMENTS ||--o{ KNOWLEDGE_CHUNKS : split_into
+  ORGANIZATIONS {
+    uuid id PK
+    text name
+    text plan
+    char country_code
+  }
+  USERS {
+    uuid id PK
+    uuid org_id FK
+    text email
+    text role
+  }
+  GREENHOUSES {
+    uuid id PK
+    uuid org_id FK
+    text facility_code
+    float latitude
+    float longitude
+  }
+  ZONES {
+    uuid id PK
+    uuid greenhouse_id FK
+    text crop_id FK
+    text zone_code
+  }
+  CROPS {
+    text id PK
+    text name_id
+    int dap_harvest
+    float optimal_temp_c
+  }
+  PLANTINGS {
+    uuid id PK
+    uuid zone_id FK
+    text crop_id FK
+    date planted_date
+    text status
+  }
+  SENSOR_READINGS {
+    bigint id PK
+    uuid zone_id FK
+    timestamp ts
+    text param
+    float value
+  }
+  FLOW_METER_LOG {
+    bigint id PK
+    uuid zone_id FK
+    float flow_lpm
+    text status
+  }
+  ACTUATOR_EVENTS {
+    bigint id PK
+    uuid zone_id FK
+    text actuator
+    text triggered_by
+  }
+  VERNALIZATION_LOG {
+    bigint id PK
+    uuid planting_id FK
+    float cold_hours
+  }
+  ALERT_RULES {
+    uuid id PK
+    uuid zone_id FK
+    text param
+    text severity
+  }
+  ALERTS {
+    bigint id PK
+    uuid zone_id FK
+    uuid rule_id FK
+    bool acknowledged
+  }
+  NOTIFICATION_CHANNELS {
+    uuid id PK
+    uuid org_id FK
+    text channel_type
+    jsonb config
+  }
+  NOTIFICATION_LOG {
+    bigint id PK
+    uuid channel_id FK
+    text status
+  }
+  WEATHER_SNAPSHOTS {
+    bigint id PK
+    uuid greenhouse_id FK
+    timestamp forecast_for
+    float temp_c
+  }
+  KNOWLEDGE_DOCUMENTS {
+    uuid id PK
+    text title
+    text source
+  }
+  KNOWLEDGE_CHUNKS {
+    uuid id PK
+    uuid document_id FK
+    vector embedding
+  }
+  AI_QUERIES {
+    bigint id PK
+    uuid user_id FK
+    uuid zone_id FK
+    text llm_provider
+  }
+  MARKET_PRICES {
+    bigint id PK
+    text crop_id FK
+    float price_per_kg
+  }
+  CARBON_RECORDS {
+    uuid id PK
+    uuid greenhouse_id FK
+    float net_carbon_kg
+  }
+  AUDIT_BLOCKS {
+    bigint id PK
+    uuid greenhouse_id FK
+    text hash
+    text prev_hash
+  }`);
+document.getElementById('erd').innerHTML = svg;
+
+document.querySelectorAll('#erd svg.erDiagram .node').forEach(node => {
+  const firstPath = node.querySelector('path[d]');
+  if (!firstPath) return;
+  const d = firstPath.getAttribute('d');
+  const nums = d.match(/-?[\d.]+/g)?.map(Number);
+  if (!nums || nums.length < 8) return;
+  const xs = [nums[0], nums[2], nums[4], nums[6]];
+  const ys = [nums[1], nums[3], nums[5], nums[7]];
+  const x = Math.min(...xs), y = Math.min(...ys);
+  const w = Math.max(...xs) - x, h = Math.max(...ys) - y;
+  const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  rect.setAttribute('x', x); rect.setAttribute('y', y);
+  rect.setAttribute('width', w); rect.setAttribute('height', h);
+  rect.setAttribute('rx', '8');
+  for (const a of ['fill', 'stroke', 'stroke-width', 'class', 'style']) {
+    if (firstPath.hasAttribute(a)) rect.setAttribute(a, firstPath.getAttribute(a));
+  }
+  firstPath.replaceWith(rect);
+});
+
+document.querySelectorAll('#erd svg.erDiagram .row-rect-odd path, #erd svg.erDiagram .row-rect-even path').forEach(p => {
+  p.setAttribute('stroke', 'none');
+});
+</script>

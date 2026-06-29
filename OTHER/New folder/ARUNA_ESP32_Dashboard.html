@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ARUNA ESP32 — Visual Hardware Dashboard</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600;700&display=swap');
+
+:root {
+  --bg:#060d0a; --bg2:#0b1510; --bg3:#0f1e16;
+  --green:#00ff88; --green2:#00cc66; --green3:#003318;
+  --blue:#00aaff; --amber:#ffaa00; --red:#ff3344;
+  --cyan:#00ffee; --purple:#aa55ff; --orange:#ff7722;
+  --text:#b8d4c0; --text2:#4a7a5a; --border:#1a3025;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;min-height:100vh;overflow-x:hidden}
+body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,255,136,0.008) 3px,rgba(0,255,136,0.008) 4px);pointer-events:none;z-index:9999}
+
+/* header */
+header{background:linear-gradient(90deg,#060d0a,#0d1f14,#060d0a);border-bottom:1px solid var(--border);padding:10px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.logo{font-family:'Share Tech Mono',monospace;font-size:20px;color:var(--green);text-shadow:0 0 20px #00ff8866;letter-spacing:3px}
+.logo small{display:block;font-size:10px;color:var(--text2);letter-spacing:2px}
+.hdr-right{display:flex;gap:20px;align-items:center}
+.dot{width:7px;height:7px;border-radius:50%;animation:blink 2s infinite}
+.dot.g{background:var(--green);box-shadow:0 0 8px var(--green)}
+.dot.a{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+.stat-item{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text2);display:flex;align-items:center;gap:5px}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.clock{font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--cyan)}
+
+/* layout */
+.layout{display:grid;grid-template-columns:1fr 400px;gap:0;height:calc(100vh - 53px)}
+
+/* left: ESP32 visual */
+.esp-panel{background:var(--bg);padding:20px;overflow-y:auto;border-right:1px solid var(--border)}
+
+/* right: data panels */
+.data-panel{background:var(--bg2);overflow-y:auto;display:flex;flex-direction:column;gap:0}
+
+/* ESP32 board visual */
+.board-wrap{display:flex;flex-direction:column;align-items:center;gap:16px}
+.board-title{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text2);letter-spacing:3px;text-align:center}
+
+.esp32-board{
+  width:320px;background:linear-gradient(145deg,#1a3a2a,#0d2018);
+  border:2px solid #2a5a3a;border-radius:8px;padding:16px 12px;
+  box-shadow:0 0 30px rgba(0,255,136,0.1),inset 0 0 20px rgba(0,0,0,0.5);
+  position:relative;font-family:'Share Tech Mono',monospace;font-size:9px;
+}
+.board-label{text-align:center;color:var(--green);font-size:12px;letter-spacing:2px;margin-bottom:10px;text-shadow:0 0 10px var(--green)}
+.chip{width:80px;height:80px;background:linear-gradient(145deg,#111,#222);border:1px solid #333;border-radius:4px;margin:8px auto;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px rgba(0,0,0,0.8)}
+.chip-label{color:#555;font-size:8px;text-align:center;line-height:1.4}
+
+/* Pin rows */
+.pin-rows{display:flex;justify-content:space-between;gap:8px}
+.pin-col{display:flex;flex-direction:column;gap:2px;flex:1}
+.pin-row{display:flex;align-items:center;gap:4px;padding:1px 0}
+.pin-num{color:var(--text2);font-size:8px;width:20px;text-align:right;flex-shrink:0}
+.pin-num.left{text-align:left}
+.pin-dot{width:7px;height:7px;border-radius:50%;border:1px solid #2a4a3a;flex-shrink:0;transition:all .3s}
+.pin-dot.high{background:var(--green);box-shadow:0 0 6px var(--green);border-color:var(--green)}
+.pin-dot.pwm{background:var(--amber);box-shadow:0 0 6px var(--amber);border-color:var(--amber)}
+.pin-dot.adc{background:var(--blue);box-shadow:0 0 4px var(--blue);border-color:var(--blue)}
+.pin-dot.low{background:#0a1a10;border-color:#1a3a20}
+.pin-label{font-size:8px;color:var(--text2);flex:1;white-space:nowrap;overflow:hidden}
+
+/* sensor grid */
+.sensor-section{margin-top:20px}
+.sec-title{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text2);letter-spacing:2px;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:4px}
+.sensor-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.sensor-card{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:8px;text-align:center;transition:border-color .3s}
+.sensor-card:hover{border-color:var(--green)}
+.s-label{font-size:9px;color:var(--text2);letter-spacing:1px;margin-bottom:4px;font-family:'Share Tech Mono',monospace}
+.s-val{font-size:16px;font-weight:700;color:var(--green);font-family:'Share Tech Mono',monospace;line-height:1}
+.s-unit{font-size:9px;color:var(--text2);margin-top:2px}
+.s-bar{height:3px;background:#0a1a10;border-radius:2px;margin-top:4px;overflow:hidden}
+.s-fill{height:3px;border-radius:2px;transition:width .5s ease}
+
+/* actuator row */
+.act-section{margin-top:20px}
+.act-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.act-card{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:8px;text-align:center;transition:all .3s;position:relative;overflow:hidden}
+.act-card.on{border-color:var(--green);background:rgba(0,255,136,0.05)}
+.act-card.on.amber{border-color:var(--amber);background:rgba(255,170,0,0.05)}
+.act-card.on.blue{border-color:var(--blue);background:rgba(0,170,255,0.05)}
+.act-card.on.red{border-color:var(--red);background:rgba(255,51,68,0.05)}
+.act-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:transparent;transition:background .3s}
+.act-card.on::before{background:var(--green)}
+.act-card.on.amber::before{background:var(--amber)}
+.act-card.on.blue::before{background:var(--blue)}
+.act-led{width:12px;height:12px;border-radius:50%;background:#0a1a10;border:1px solid #1a3a20;margin:0 auto 4px;transition:all .3s}
+.act-card.on .act-led{background:var(--green);box-shadow:0 0 8px var(--green),0 0 16px rgba(0,255,136,0.3)}
+.act-card.on.amber .act-led{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+.act-card.on.blue .act-led{background:var(--blue);box-shadow:0 0 8px var(--blue)}
+.act-card.on.red .act-led{background:var(--red);box-shadow:0 0 8px var(--red)}
+.act-name{font-size:9px;color:var(--text2);letter-spacing:1px;font-family:'Share Tech Mono',monospace}
+.act-val{font-size:11px;font-weight:600;color:var(--text2);margin-top:2px;font-family:'Share Tech Mono',monospace}
+.act-card.on .act-val{color:var(--green)}
+.act-card.on.amber .act-val{color:var(--amber)}
+
+/* right panel */
+.rpanel{border-bottom:1px solid var(--border);padding:14px 16px}
+.rpanel-title{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text2);letter-spacing:2px;margin-bottom:10px}
+.rpanel-title.g{color:var(--green)}
+.rpanel-title.b{color:var(--blue)}
+.rpanel-title.a{color:var(--amber)}
+.rpanel-title.r{color:var(--red)}
+
+/* gauge */
+.gauge-wrap{display:flex;flex-wrap:wrap;gap:8px}
+.gauge{width:calc(50% - 4px);background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:8px}
+.g-label{font-size:9px;color:var(--text2);font-family:'Share Tech Mono',monospace;letter-spacing:1px;margin-bottom:4px}
+.g-val{font-size:22px;font-weight:700;font-family:'Share Tech Mono',monospace;line-height:1;transition:color .3s}
+.g-unit{font-size:10px;color:var(--text2)}
+.g-bar{height:4px;background:#0a1a10;border-radius:2px;margin-top:6px;overflow:hidden}
+.g-fill{height:4px;border-radius:2px;transition:width .6s ease}
+.g-sp{font-size:9px;color:var(--text2);margin-top:3px;font-family:'Share Tech Mono',monospace}
+
+/* alarm */
+.alarm-box{background:rgba(255,51,68,0.08);border:1px solid var(--red);border-radius:4px;padding:10px;font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--red);display:none;animation:alarmblink 1s infinite;margin-bottom:8px}
+@keyframes alarmblink{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* log */
+.log-area{max-height:120px;overflow-y:auto;font-family:'Share Tech Mono',monospace;font-size:10px;line-height:1.8;color:var(--text2)}
+.log-ok{color:var(--green)}
+.log-err{color:var(--red)}
+.log-info{color:var(--blue)}
+
+/* mqtt status */
+.mqtt-status{display:flex;align-items:center;gap:8px;font-family:'Share Tech Mono',monospace;font-size:11px;padding:8px 0}
+.mqtt-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+/* scrollbar */
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* sparkline canvas */
+.spark{width:100%;height:35px;margin-top:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">ARUNA ESP32 <small>PLANT FACTORY SCADA — HARDWARE DASHBOARD</small></div>
+  <div class="hdr-right">
+    <div class="stat-item"><div class="dot g" id="mqttDot"></div><span id="mqttStatus">CONNECTING...</span></div>
+    <div class="stat-item"><div class="dot a"></div>GH-INDO-01</div>
+    <div class="clock" id="clk">--:--:--</div>
+  </div>
+</header>
+
+<div class="layout">
+
+<!-- LEFT: ESP32 visual board -->
+<div class="esp-panel">
+  <div class="board-wrap">
+    <div class="board-title">ESP32-S3 DEVKIT — PLANT FACTORY NODE</div>
+
+    <div class="esp32-board">
+      <div class="board-label">ESP32-S3</div>
+
+      <!-- chip visual -->
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+        <div class="pin-col" id="pinLeft"></div>
+        <div class="chip">
+          <div class="chip-label">ESPRESSIF<br>ESP32-S3<br>WROOM-1<br>─────<br>240MHz<br>WiFi+BLE</div>
+        </div>
+        <div class="pin-col" id="pinRight"></div>
+      </div>
+
+      <!-- USB indicator -->
+      <div style="text-align:center;margin-top:4px">
+        <div style="display:inline-block;width:24px;height:10px;background:#333;border-radius:2px;border:1px solid #555"></div>
+        <div style="font-size:8px;color:var(--text2);margin-top:2px">USB · 115200</div>
+      </div>
+
+      <!-- WiFi signal -->
+      <div style="position:absolute;top:10px;right:10px;display:flex;flex-direction:column;align-items:flex-end;gap:1px" id="wifiSignal">
+        <div style="width:8px;height:2px;background:var(--green);border-radius:1px;opacity:.3"></div>
+        <div style="width:12px;height:2px;background:var(--green);border-radius:1px;opacity:.6"></div>
+        <div style="width:16px;height:2px;background:var(--green);border-radius:1px"></div>
+        <div style="font-size:7px;color:var(--green);margin-top:1px">WiFi</div>
+      </div>
+    </div>
+
+    <!-- Sensor cards -->
+    <div class="sensor-section" style="width:100%;max-width:500px">
+      <div class="sec-title">📡 SENSOR INPUT — ADC READINGS</div>
+      <div class="sensor-grid" id="sensorGrid"></div>
+    </div>
+
+    <!-- Actuator cards -->
+    <div class="act-section" style="width:100%;max-width:500px">
+      <div class="sec-title">⚡ ACTUATOR OUTPUT — GPIO STATE</div>
+      <div class="act-grid" id="actGrid"></div>
+    </div>
+
+    <!-- JSON stream preview -->
+    <div style="width:100%;max-width:500px;margin-top:16px">
+      <div class="sec-title">📤 SERIAL / MQTT JSON STREAM</div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:8px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--green);max-height:100px;overflow:hidden;line-height:1.6" id="jsonPreview">
+        Waiting for data...
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- RIGHT: Data panels -->
+<div class="data-panel">
+
+  <!-- MQTT status -->
+  <div class="rpanel">
+    <div class="rpanel-title g">MQTT CONNECTION</div>
+    <div class="mqtt-status">
+      <div class="mqtt-dot" id="connDot" style="background:var(--amber);box-shadow:0 0 6px var(--amber)"></div>
+      <span id="connLabel" style="color:var(--amber)">Connecting to broker.emqx.io:1883...</span>
+    </div>
+    <div style="font-size:10px;color:var(--text2);font-family:'Share Tech Mono',monospace;line-height:1.8">
+      TOPIC: <span style="color:var(--cyan)">greenhouse/GH-INDO-01/#</span><br>
+      UPTIME: <span style="color:var(--green)" id="uptime">0s</span> &nbsp;|&nbsp;
+      CYCLE: <span style="color:var(--green)" id="cycle">0</span>
+    </div>
+    <div class="alarm-box" id="alarmBox">⚠ ALARM AKTIF — <span id="alarmMsg">—</span></div>
+  </div>
+
+  <!-- Zone B gauges -->
+  <div class="rpanel">
+    <div class="rpanel-title g">ZONE-B · GREENHOUSE · LIVE DATA</div>
+    <div class="gauge-wrap" id="gaugeWrap"></div>
+  </div>
+
+  <!-- Setpoint comparison -->
+  <div class="rpanel">
+    <div class="rpanel-title b">SETPOINT vs ACTUAL</div>
+    <div id="spTable" style="font-family:'Share Tech Mono',monospace;font-size:11px;line-height:2"></div>
+  </div>
+
+  <!-- Alarm log -->
+  <div class="rpanel">
+    <div class="rpanel-title r">ALARM LOG</div>
+    <div class="log-area" id="logArea">
+      <div class="log-ok">[ BOOT ] System initialized</div>
+    </div>
+  </div>
+
+  <!-- System metrics -->
+  <div class="rpanel">
+    <div class="rpanel-title a">SYSTEM METRICS</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-family:'Share Tech Mono',monospace;font-size:11px" id="sysMetrics"></div>
+  </div>
+
+</div>
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────
+const WS_URL = 'ws://localhost:8765';
+const SETPOINTS = { temp:22, rh:72, co2:850, soil:60, ec:1.9, ph:6.4 };
+const ALARM_NAMES = ['OK','TEMP HIGH','TEMP LOW','CO2 HIGH','SOIL DRY','PRESS DROP'];
+let cycleN = 0, energy = 0, water = 0, connected = false;
+
+// ── Pin definitions ───────────────────────────────────────────────
+const PINS_LEFT = [
+  {num:'3V3',label:'3.3V Power',type:'power'},
+  {num:'GND',label:'Ground',type:'gnd'},
+  {num:'4',  label:'DHT22 SDA',type:'adc',key:'temp'},
+  {num:'15', label:'DS18B20',  type:'adc',key:'cold_temp'},
+  {num:'34', label:'Soil ADC', type:'adc',key:'soil'},
+  {num:'35', label:'EC ADC',   type:'adc',key:'ec'},
+  {num:'32', label:'pH ADC',   type:'adc',key:'ph'},
+  {num:'33', label:'CO2 ADC',  type:'adc',key:'co2'},
+  {num:'36', label:'PPFD ADC', type:'adc',key:'ppfd'},
+  {num:'2',  label:'Flow INT', type:'dig',key:'flow'},
+  {num:'5',  label:'Harvest',  type:'dig'},
+];
+const PINS_RIGHT = [
+  {num:'26',label:'Valve',    type:'out',key:'relay_valve'},
+  {num:'25',label:'Grow LED', type:'pwm',key:'led_pwm'},
+  {num:'27',label:'CO2 INJ',  type:'out',key:'co2_inject'},
+  {num:'14',label:'Heater',   type:'out',key:'heater'},
+  {num:'12',label:'Pump',     type:'out',key:'pump'},
+  {num:'19',label:'Fan PWM',  type:'pwm',key:'fan_pwm'},
+  {num:'18',label:'Dose A',   type:'out',key:'dose_a'},
+  {num:'17',label:'Dose B',   type:'out',key:'dose_b'},
+  {num:'16',label:'Alarm LED',type:'out',key:'alarm'},
+  {num:'23',label:'Buzzer',   type:'out',key:'alarm'},
+  {num:'21',label:'OLED SDA', type:'i2c'},
+];
+
+// ── Sensors config ────────────────────────────────────────────────
+const SENSORS = [
+  {key:'temp',   label:'TEMP',    unit:'°C',  min:0,  max:50, color:'#00ff88'},
+  {key:'rh',     label:'RH',      unit:'%',   min:0,  max:100,color:'#00aaff'},
+  {key:'co2',    label:'CO2',     unit:'ppm', min:400,max:2000,color:'#ffaa00'},
+  {key:'soil',   label:'SOIL',    unit:'%',   min:0,  max:100,color:'#00cc66'},
+  {key:'ec',     label:'EC',      unit:'mS',  min:0,  max:4,  color:'#00ffee'},
+  {key:'ph',     label:'pH',      unit:'',    min:5,  max:8,  color:'#aa55ff'},
+  {key:'ppfd',   label:'PPFD',    unit:'µmol',min:0,  max:800,color:'#ffcc00'},
+  {key:'cold_temp',label:'COLD',  unit:'°C',  min:0,  max:15, color:'#00ffee'},
+  {key:'flow',   label:'FLOW',    unit:'L/m', min:0,  max:5,  color:'#00aaff'},
+  {key:'pressure_bar',label:'PRESS',unit:'bar',min:0, max:6,  color:'#ff7722'},
+  {key:'power_kw',label:'POWER',  unit:'kW',  min:0,  max:5,  color:'#ffaa00'},
+  {key:'uptime_s',label:'UPTIME', unit:'s',   min:0,  max:3600,color:'#00ff88'},
+];
+
+const ACTUATORS = [
+  {key:'relay_valve',label:'VALVE',     icon:'💧',color:''},
+  {key:'led_pwm',   label:'GROW LED',  icon:'💡',color:'amber',isPwm:true},
+  {key:'co2_inject',label:'CO2 INJ',   icon:'🫧',color:'blue'},
+  {key:'heater',    label:'HEATER',    icon:'🔥',color:'amber'},
+  {key:'pump',      label:'PUMP',      icon:'⚙',color:''},
+  {key:'fan_pwm',   label:'FAN',       icon:'🌀',color:'blue',isPwm:true},
+  {key:'dose_a',    label:'DOSE-A',    icon:'🧪',color:''},
+  {key:'dose_b',    label:'DOSE-B',    icon:'⚗',color:''},
+  {key:'alarm',     label:'ALARM',     icon:'⚠',color:'red'},
+];
+
+const GAUGES = [
+  {key:'temp',  label:'TEMPERATURE', unit:'°C',  min:0,  max:50,  sp:22, color:'#00ff88'},
+  {key:'rh',    label:'HUMIDITY',    unit:'%',   min:0,  max:100, sp:72, color:'#00aaff'},
+  {key:'co2',   label:'CO2',         unit:'ppm', min:400,max:2000,sp:850,color:'#ffaa00'},
+  {key:'soil',  label:'SOIL VWC',    unit:'%',   min:0,  max:100, sp:60, color:'#00cc66'},
+  {key:'ec',    label:'EC NUTRISI',  unit:'mS/cm',min:0, max:4,   sp:1.9,color:'#00ffee'},
+  {key:'ph',    label:'pH LARUTAN',  unit:'',    min:5,  max:8,   sp:6.4,color:'#aa55ff'},
+];
+
+// ── Build static HTML ─────────────────────────────────────────────
+function buildPins() {
+  ['pinLeft','pinRight'].forEach((id,side)=>{
+    const pins = side===0?PINS_LEFT:PINS_RIGHT;
+    const el = document.getElementById(id);
+    el.innerHTML = pins.map(p=>`
+      <div class="pin-row">
+        ${side===1?`<span class="pin-num">${p.num}</span>`:''}
+        <div class="pin-dot low" id="pin_${p.num.replace('/','_')}"></div>
+        <span class="pin-label">${p.label}</span>
+        ${side===0?`<span class="pin-num left">${p.num}</span>`:''}
+      </div>`).join('');
+  });
+}
+
+function buildSensorGrid() {
+  document.getElementById('sensorGrid').innerHTML = SENSORS.map(s=>`
+    <div class="sensor-card">
+      <div class="s-label">${s.label}</div>
+      <div class="s-val" id="sv_${s.key}" style="color:${s.color}">—</div>
+      <div class="s-unit">${s.unit}</div>
+      <div class="s-bar"><div class="s-fill" id="sb_${s.key}" style="background:${s.color};width:0%"></div></div>
+    </div>`).join('');
+}
+
+function buildActGrid() {
+  document.getElementById('actGrid').innerHTML = ACTUATORS.map(a=>`
+    <div class="act-card" id="ac_${a.key}">
+      <div class="act-led" id="al_${a.key}"></div>
+      <div style="font-size:14px">${a.icon}</div>
+      <div class="act-name">${a.label}</div>
+      <div class="act-val" id="av_${a.key}">OFF</div>
+    </div>`).join('');
+}
+
+function buildGauges() {
+  document.getElementById('gaugeWrap').innerHTML = GAUGES.map(g=>`
+    <div class="gauge">
+      <div class="g-label">${g.label}</div>
+      <div class="g-val" id="gv_${g.key}" style="color:${g.color}">—<span class="g-unit"> ${g.unit}</span></div>
+      <div class="g-bar"><div class="g-fill" id="gf_${g.key}" style="background:${g.color};width:0%"></div></div>
+      <div class="g-sp" id="gs_${g.key}">SP: ${g.sp} ${g.unit}</div>
+    </div>`).join('');
+}
+
+// ── Update UI with data ───────────────────────────────────────────
+function updateUI(d) {
+  cycleN++;
+  energy += (d.power_kw||1.85)/3600;
+  water  += (d.flow||1.3)*3/60;
+
+  // Sensors
+  SENSORS.forEach(s=>{
+    const v = d[s.key];
+    if(v===undefined) return;
+    const el = document.getElementById('sv_'+s.key);
+    const bar = document.getElementById('sb_'+s.key);
+    if(el) el.textContent = typeof v==='number'?v.toFixed(s.key==='co2'||s.key==='ppfd'?0:1):v;
+    if(bar){
+      const pct = Math.min(100,Math.max(0,(v-s.min)/(s.max-s.min)*100));
+      bar.style.width = pct+'%';
+    }
+  });
+
+  // Actuators
+  ACTUATORS.forEach(a=>{
+    const v = d[a.key];
+    const card = document.getElementById('ac_'+a.key);
+    const led  = document.getElementById('al_'+a.key);
+    const val  = document.getElementById('av_'+a.key);
+    if(!card) return;
+    const isOn = a.isPwm ? (v||0)>20 : (v||0)>0;
+    card.className = 'act-card'+(isOn?' on':'')+(isOn&&a.color?' '+a.color:'');
+    if(val) val.textContent = a.isPwm ? (v||0)+'%' : isOn?'ON':'OFF';
+  });
+
+  // Gauges
+  GAUGES.forEach(g=>{
+    const v = d[g.key];
+    if(v===undefined) return;
+    const gv = document.getElementById('gv_'+g.key);
+    const gf = document.getElementById('gf_'+g.key);
+    if(gv){
+      const isOff = Math.abs(v-g.sp) > (g.max-g.min)*0.15;
+      gv.style.color = isOff ? '#ffaa00' : g.color;
+      gv.innerHTML = (typeof v==='number'?v.toFixed(g.key==='co2'?0:1):v)+`<span class="g-unit"> ${g.unit}</span>`;
+    }
+    if(gf){
+      const pct = Math.min(100,Math.max(0,(v-g.min)/(g.max-g.min)*100));
+      gf.style.width = pct+'%';
+    }
+  });
+
+  // Pins
+  PINS_RIGHT.forEach(p=>{
+    if(!p.key) return;
+    const el = document.getElementById('pin_'+p.num);
+    if(!el) return;
+    const v = d[p.key]||0;
+    if(p.type==='pwm'){el.className='pin-dot'+(v>20?' pwm':' low');}
+    else{el.className='pin-dot'+(v>0?' high':' low');}
+  });
+  PINS_LEFT.forEach(p=>{
+    if(!p.key) return;
+    const el = document.getElementById('pin_'+p.num.replace('/','_'));
+    if(!el) return;
+    const v = d[p.key]||0;
+    el.className = 'pin-dot'+(v>0||p.type==='adc'?' adc':' low');
+  });
+
+  // Setpoint table
+  const spRows = Object.entries(SETPOINTS).map(([k,sp])=>{
+    const v = d[k]||0;
+    const err = (v-sp).toFixed(k==='co2'?0:2);
+    const color = Math.abs(v-sp)>(Math.abs(sp)*0.1)?'var(--amber)':'var(--green)';
+    return `<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--border);padding:2px 0">
+      <span style="color:var(--text2)">${k.toUpperCase()}</span>
+      <span style="color:var(--text2)">SP:${sp}</span>
+      <span style="color:${color}">ACT:${typeof v==='number'?v.toFixed(k==='co2'?0:1):v}</span>
+      <span style="color:${color}">ERR:${err}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('spTable').innerHTML = spRows;
+
+  // Alarm
+  const alarmBox = document.getElementById('alarmBox');
+  if(d.alarm||d.alarm_code){
+    alarmBox.style.display = 'block';
+    document.getElementById('alarmMsg').textContent = ALARM_NAMES[d.alarm_code||0]||'UNKNOWN';
+    addLog('⚠ ALARM: '+ALARM_NAMES[d.alarm_code||0], 'err');
+  } else {
+    alarmBox.style.display = 'none';
+  }
+
+  // System metrics
+  document.getElementById('sysMetrics').innerHTML = `
+    <div><span style="color:var(--text2)">ENERGY</span><br><span style="color:var(--amber);font-size:16px">${energy.toFixed(3)}</span> kWh</div>
+    <div><span style="color:var(--text2)">WATER</span><br><span style="color:var(--blue);font-size:16px">${water.toFixed(1)}</span> L</div>
+    <div><span style="color:var(--text2)">CYCLES</span><br><span style="color:var(--green);font-size:16px">${cycleN.toLocaleString()}</span></div>
+    <div><span style="color:var(--text2)">POWER</span><br><span style="color:var(--amber);font-size:16px">${(d.power_kw||1.85).toFixed(2)}</span> kW</div>
+  `;
+
+  // Uptime / cycle HUD
+  document.getElementById('uptime').textContent = (d.uptime_s||0)+'s';
+  document.getElementById('cycle').textContent = cycleN;
+
+  // JSON preview
+  const preview = JSON.stringify(d, null, 0).substring(0,200)+'...';
+  document.getElementById('jsonPreview').textContent = preview;
+}
+
+// ── Log ───────────────────────────────────────────────────────────
+function addLog(msg, type='info') {
+  const log = document.getElementById('logArea');
+  const el = document.createElement('div');
+  el.className = 'log-'+type;
+  el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  log.insertBefore(el, log.firstChild);
+  if(log.children.length > 30) log.removeChild(log.lastChild);
+}
+
+// ── WebSocket connection ──────────────────────────────────────────
+function connect() {
+  const ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    connected = true;
+    document.getElementById('connDot').style.cssText = 'background:var(--green);box-shadow:0 0 8px var(--green)';
+    document.getElementById('connLabel').style.color = 'var(--green)';
+    document.getElementById('connLabel').textContent = 'Connected — broker.emqx.io:1883';
+    document.getElementById('mqttDot').style.background = 'var(--green)';
+    document.getElementById('mqttStatus').textContent = 'MQTT LIVE';
+    addLog('WebSocket connected to dashboard server', 'ok');
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      updateUI(data);
+    } catch(err) {}
+  };
+
+  ws.onclose = () => {
+    connected = false;
+    document.getElementById('connDot').style.cssText = 'background:var(--amber);box-shadow:0 0 6px var(--amber)';
+    document.getElementById('connLabel').style.color = 'var(--amber)';
+    document.getElementById('connLabel').textContent = 'Disconnected — retrying in 3s...';
+    addLog('Connection lost — retrying...', 'err');
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => {
+    // Fallback: simulate data locally
+    document.getElementById('connLabel').textContent = 'No server — using local simulation';
+    addLog('Server tidak ditemukan — mode simulasi lokal aktif', 'info');
+    startLocalSim();
+  };
+}
+
+// ── Local simulation fallback (no server needed) ──────────────────
+let simT = 0, simRunning = false;
+function startLocalSim() {
+  if(simRunning) return;
+  simRunning = true;
+  document.getElementById('connDot').style.cssText = 'background:var(--blue);box-shadow:0 0 6px var(--blue)';
+  document.getElementById('connLabel').style.color = 'var(--blue)';
+  document.getElementById('connLabel').textContent = 'LOCAL SIMULATION MODE — jalankan esp32_sim.py untuk data real';
+
+  setInterval(()=>{
+    const g = (mu,s)=>mu+(Math.random()-.5)*s*2;
+    updateUI({
+      zone:'zone-B', facility:'GH-INDO-01',
+      temp:  parseFloat((22+Math.sin(simT)*2+g(0,.2)).toFixed(1)),
+      rh:    parseFloat((72+g(0,.5)).toFixed(1)),
+      co2:   Math.round(850+g(0,10)),
+      soil:  parseFloat((60+g(0,.3)).toFixed(1)),
+      ec:    parseFloat((1.9+g(0,.02)).toFixed(2)),
+      ph:    parseFloat((6.4+g(0,.01)).toFixed(2)),
+      ppfd:  Math.round(400+g(0,5)),
+      cold_temp: parseFloat((5+g(0,.1)).toFixed(1)),
+      flow:  parseFloat((1.3+g(0,.1)).toFixed(1)),
+      pressure_bar: parseFloat((2.4+g(0,.05)).toFixed(2)),
+      power_kw: parseFloat((1.85+g(0,.1)).toFixed(2)),
+      relay_valve: Math.sin(simT*0.3)>0.5?1:0,
+      led_pwm: Math.round(75+g(0,5)),
+      co2_inject: Math.sin(simT*0.5)<-0.3?1:0,
+      heater: simT%20<3?1:0,
+      pump: Math.sin(simT*0.2)>0.6?1:0,
+      fan_pwm: 50,
+      alarm: 0, alarm_code: 0,
+      uptime_s: Math.round(simT*3)
+    });
+    simT += 0.1;
+  }, 1000);
+}
+
+// ── Clock ─────────────────────────────────────────────────────────
+setInterval(()=>{ document.getElementById('clk').textContent = new Date().toLocaleTimeString('id-ID'); }, 1000);
+
+// ── Init ──────────────────────────────────────────────────────────
+buildPins();
+buildSensorGrid();
+buildActGrid();
+buildGauges();
+addLog('ARUNA ESP32 Dashboard initialized', 'ok');
+connect();
+// Start local sim immediately as fallback
+setTimeout(()=>{ if(!connected) startLocalSim(); }, 2000);
+</script>
+</body>
+</html>
