@@ -178,6 +178,30 @@ ALTER PUBLICATION supabase_realtime ADD TABLE alerts;
 ALTER PUBLICATION supabase_realtime ADD TABLE voc_readings;
 
 -- ============================================================================
+-- ROW LEVEL SECURITY (RLS)
+-- ============================================================================
+-- Semua akses DB production melalui FastAPI backend menggunakan service_role key.
+-- Service_role di Supabase OTOMATIS bypass RLS — tidak perlu policy khusus.
+-- RLS diaktifkan untuk memblokir akses langsung via anon key dari browser/client.
+-- ============================================================================
+
+ALTER TABLE sensor_readings   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE flow_meter_log    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE actuator_events   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE alerts            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vernalization_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE weather_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE market_prices     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE knowledge_documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE knowledge_chunks  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payment_events    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE voc_readings      ENABLE ROW LEVEL SECURITY;
+
+-- Tanpa CREATE POLICY → anon key tidak bisa akses tabel ini sama sekali.
+-- Backend (service_role) tetap bisa tulis/baca semua tabel tanpa policy.
+
+-- ============================================================================
 -- PGVECTOR SETUP (opsional — untuk semantic vector search di RAG)
 -- ============================================================================
 -- Jalankan bagian ini TERPISAH setelah tabel di atas sudah dibuat.

@@ -32,6 +32,9 @@ if _ROOT not in sys.path:
 from dotenv import load_dotenv
 load_dotenv(os.path.join(_ROOT, ".env"))
 
+import sentry_sdk
+sentry_sdk.init(dsn=os.environ.get("SENTRY_DSN", ""), traces_sample_rate=0.1)
+
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -39,11 +42,19 @@ from typing import Dict, List, Optional
 import asyncio
 import json
 
+from slowapi import Limiter, _rate_limit_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(
     title="AgriTwin API",
     version="1.0.0",
     description="AI Greenhouse Digital Twin Backend",
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
 
 # CORS — allow Next.js frontend
 _CORS_ORIGINS = [o.strip() for o in os.environ.get(
@@ -220,7 +231,8 @@ class AIQuery(BaseModel):
     context: Optional[Dict] = None
 
 @app.post("/api/ai/query")
-async def ai_query(query: AIQuery):
+@limiter.limit("10/minute")
+async def ai_query(request: Request, query: AIQuery):
     """Tanya AI agronomist (Gemini + RAG / Groq / Stub fallback)."""
     from rag.knowledge_base import build_rag_prompt
 
@@ -271,7 +283,8 @@ class PaymentCreate(BaseModel):
 
 
 @app.post("/api/payments/create-transaction")
-async def create_payment(data: PaymentCreate):
+@limiter.limit("20/minute")
+async def create_payment(request: Request, data: PaymentCreate):
     """Buat transaksi Midtrans Snap. Returns snap token + redirect_url."""
     from payments.midtrans_client import create_snap_transaction
     result = create_snap_transaction(
