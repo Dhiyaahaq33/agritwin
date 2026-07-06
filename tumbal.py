@@ -47,6 +47,14 @@ try:
 except ImportError:
     pass  # python-dotenv belum diinstall — env var manual tetap jalan
 
+# ─── STREAMLIT CLOUD — sync st.secrets → os.environ ──────────────────────────
+try:
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, str):
+            os.environ.setdefault(_k, _v)
+except Exception:
+    pass
+
 # ─── SENTRY — error monitoring (gratis 5K error/bulan) ────────────────────────
 _SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
 if _SENTRY_DSN:
