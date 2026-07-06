@@ -46,6 +46,10 @@ node_modules/
 # ── Railway / deployment ─────────────────────────────────────────────────────
 .railway/
 
+# ── Claude Code / internal dev files ────────────────────────────────────────
+.claude/
+AGENTS_RUFLO.md
+
 # ── IDE ──────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
