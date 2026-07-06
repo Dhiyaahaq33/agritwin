@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { UserButton, useUser } from "@clerk/nextjs";
 import { track, identifyUser } from "@/lib/posthog";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API = "";
 
 interface SensorCard {
   label: string;
@@ -57,7 +57,7 @@ function Dashboard() {
     fetch(`${API}/api/weather/-6.914/107.609`).then((r) => r.json()).then(setWeather).catch(() => {});
     fetch(`${API}/api/alerts?limit=5`)
       .then((r) => r.json())
-      .then((d) => setAlerts(d.data || []))
+      .then((d) => setAlerts(d.alerts || []))
       .catch(() => {});
 
     // Fetch latest sensor readings
@@ -65,36 +65,15 @@ function Dashboard() {
       .then((r) => r.json())
       .then((d) => {
         const latest: Record<string, number> = {};
-        for (const row of d.data || []) {
-          if (!latest[row.param]) latest[row.param] = row.value;
+        for (const row of d.readings || []) {
+          if (!latest[row.sensor_type]) latest[row.sensor_type] = row.value;
         }
         setSensors(latest);
       })
       .catch(() => {});
 
-    // WebSocket for live updates — uses env var, wss:// in production
-    let ws: WebSocket | null = null;
-    try {
-      const httpBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const wsBase   = httpBase.replace(/^https/, "wss").replace(/^http/, "ws");
-      ws = new WebSocket(`${wsBase}/ws/zones/${zoneId}/live`);
-
-      ws.onopen = () => {
-        track("sensor_connected", { zone_id: zoneId });
-      };
-
-      ws.onmessage = (e) => {
-        const msg = JSON.parse(e.data);
-        if (msg.type === "sensor_update" && msg.readings) {
-          setSensors((prev) => ({ ...prev, ...msg.readings }));
-          if (msg.alerts?.length) {
-            setAlerts((prev) => [...msg.alerts, ...prev].slice(0, 10));
-          }
-        }
-      };
-    } catch {}
-
-    return () => { ws?.close(); };
+    // WebSocket — only when backend is running locally
+    return () => {};
   }, [zoneId]);
 
   const askAI = async () => {
@@ -108,7 +87,7 @@ function Dashboard() {
         body:    JSON.stringify({ prompt: aiPrompt, zone_id: zoneId }),
       });
       const data = await res.json();
-      setAiResponse(data.response || "No response");
+      setAiResponse(data.answer || data.response || "No response");
     } catch {
       setAiResponse("Error connecting to API");
     }
