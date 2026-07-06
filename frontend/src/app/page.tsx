@@ -184,9 +184,25 @@ function Dashboard() {
                 <span className="text-gray-500">Radiasi</span>
                 <span className="text-white">{weather.current.solar_radiation_wm2} W/m²</span>
               </div>
-              <div className="text-xs text-gray-600 pt-2">
-                Forecast: {weather.forecast?.length || 0} titik data
-              </div>
+              {weather.forecast?.length > 0 && (
+                <div className="pt-2 border-t border-gray-700 mt-2">
+                  <div className="text-xs text-gray-500 mb-1">7-Day Forecast</div>
+                  <div className="flex gap-1 overflow-x-auto pb-1">
+                    {weather.forecast.slice(0, 7).map((d: any) => (
+                      <div key={d.date} className="shrink-0 text-center bg-gray-800/60 rounded px-2 py-1 min-w-[46px]">
+                        <div className="text-[9px] text-gray-500">
+                          {new Date(d.date).toLocaleDateString("id-ID", { weekday: "short" })}
+                        </div>
+                        <div className="text-xs text-white font-medium">{d.temp_max}°</div>
+                        <div className="text-[9px] text-gray-500">{d.temp_min}°</div>
+                        {d.rain_mm > 0 && (
+                          <div className="text-[9px] text-blue-400">{d.rain_mm}mm</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <p className="text-gray-600 text-sm">Loading...</p>

@@ -15033,6 +15033,115 @@ def render_economic_projection_panel():  # noqa: C901
 # 14. MASTER PANEL — ALL-IN-ONE TABS
 # ══════════════════════════════════════════════════════════════════════════════
 
+def render_vrt_prescription_panel():
+    """🗺️ Variable Rate Technology — peta dosis pupuk per zona berdasarkan sensor."""
+    if not _STREAMLIT_OK:
+        return
+    st.markdown("""
+    <div class="ai-tech-card">
+        <span class="ai-badge tier2-badge">TIER 2 · VRT</span>
+        <h3 style="color:#88ee88;margin:8px 0;">🗺️ Variable Rate Technology — Prescription Map</h3>
+        <p style="color:#88ccdd;font-size:12px;">
+            Rekomendasi dosis pupuk N/P/K berbeda per zona berdasarkan pembacaan sensor real-time.
+            Metodologi: FAO Fertilizer Guide + koreksi EC/pH/kelembapan tanah.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    zones = st.session_state.get("zones", [])
+    if not zones:
+        st.info("Belum ada zona. Tambah zona di sidebar terlebih dahulu.")
+        return
+
+    # ── N/P/K base recommendation per crop (kg/ha/siklus) ─────────────────────
+    _BASE_NPK = {
+        "TOMATO":    (180, 80, 200), "LETTUCE":  (100, 50,  80),
+        "CUCUMBER":  (150, 70, 170), "SPINACH":   (80, 40,  60),
+        "PEPPER":    (160, 75, 180), "STRAWBERRY":(90, 55, 110),
+    }
+
+    rows = []
+    for z in zones:
+        ns   = z.nutrient_solution
+        ec   = ns.ec_mS
+        ph   = ns.ph
+        sm   = getattr(z.crop_model, "soil_moisture_pct", 60.0)
+        crop = z.crop_type.name if hasattr(z.crop_type, "name") else str(z.crop_type)
+        base_n, base_p, base_k = _BASE_NPK.get(crop.upper(), (120, 60, 120))
+
+        # ── Correction factors ────────────────────────────────────────────────
+        # EC < 0.8 → nutrient deficient → increase N/K
+        ec_factor = 1.3 if ec < 0.8 else (0.85 if ec > 3.5 else 1.0)
+        # pH 5.5-6.5 optimal; outside → reduce uptake, compensate
+        ph_factor = 1.2 if ph < 5.5 or ph > 7.0 else 1.0
+        # Soil moisture < 40% → reduce N (leaching risk if irrigated suddenly)
+        sm_factor = 0.85 if sm < 40 else 1.0
+
+        rec_n = round(base_n * ec_factor * ph_factor * sm_factor)
+        rec_p = round(base_p * ph_factor)
+        rec_k = round(base_k * ec_factor * sm_factor)
+
+        # Urgency flag
+        if ec < 0.8 or ph < 5.0 or ph > 7.5:
+            flag = "🔴 KRITIS"
+        elif ec_factor > 1.0 or ph_factor > 1.0:
+            flag = "🟡 PERLU KOREKSI"
+        else:
+            flag = "🟢 NORMAL"
+
+        rows.append({
+            "Zona":       z.zone_id,
+            "Crop":       crop,
+            "EC mS/cm":   round(ec, 2),
+            "pH":         round(ph, 2),
+            "Soil %":     round(sm, 1),
+            "N rec kg/ha": rec_n,
+            "P rec kg/ha": rec_p,
+            "K rec kg/ha": rec_k,
+            "Status":     flag,
+        })
+
+    df_vrt = pd.DataFrame(rows)
+    st.dataframe(df_vrt, width="stretch")
+
+    # ── Heatmap: N recommendation per zone ────────────────────────────────────
+    if _PLOTLY_OK and len(rows) > 0:
+        fig = go.Figure()
+        colors_n = ["#003300" if r["N rec kg/ha"] < 100 else
+                    "#22cc44" if r["N rec kg/ha"] < 160 else "#ffcc00"
+                    for r in rows]
+        fig.add_trace(go.Bar(
+            x=[r["Zona"] for r in rows],
+            y=[r["N rec kg/ha"] for r in rows],
+            name="N (kg/ha)", marker_color=colors_n,
+            text=[r["Status"] for r in rows], textposition="outside",
+        ))
+        fig.add_trace(go.Bar(
+            x=[r["Zona"] for r in rows],
+            y=[r["P rec kg/ha"] for r in rows],
+            name="P (kg/ha)", marker_color="#aa55ff",
+        ))
+        fig.add_trace(go.Bar(
+            x=[r["Zona"] for r in rows],
+            y=[r["K rec kg/ha"] for r in rows],
+            name="K (kg/ha)", marker_color="#ff9933",
+        ))
+        fig.update_layout(
+            template="plotly_dark", paper_bgcolor="#060d06", plot_bgcolor="#0a1a0a",
+            title="Prescription Map — N/P/K per Zona (kg/ha/siklus)",
+            barmode="group", height=380, font=dict(color="#7a9a7a"),
+            yaxis_title="kg/ha", xaxis_title="Zona",
+        )
+        st.plotly_chart(fig, width="stretch")
+
+    st.download_button(
+        "📥 Export Prescription CSV",
+        df_vrt.to_csv(index=False).encode("utf-8"),
+        file_name="vrt_prescription_map.csv",
+        mime="text/csv",
+    )
+
+
 def render_v5_master_panels():
     """Panel master — semua fitur v5 + Tier 1-4 dalam tabs."""
     if not _STREAMLIT_OK:
@@ -15082,6 +15191,7 @@ def render_v5_master_panels():
         "🐛 Pests & Disease",
         "🌳 Crop Rotation",
         "📚 Crop Database",
+        "🗺️ VRT Map",
         "🤖 AI Agronomist",
         "📷 Plant Doctor",
         "📱 Notification Bot",
@@ -15105,20 +15215,21 @@ def render_v5_master_panels():
     with tabs[5]:  render_pest_disease_panel()
     with tabs[6]:  render_companion_rotation_panel()
     with tabs[7]:  render_database_browser()
-    with tabs[8]:  render_llm_agronomist_panel()
-    with tabs[9]:  render_plant_doctor_cv_panel()
-    with tabs[10]: render_notification_bot_panel()
-    with tabs[11]: render_marketplace_panel()
-    with tabs[12]: render_microcredit_panel()
-    with tabs[13]: render_carbon_mrv_panel()
-    with tabs[14]: render_outbreak_predictor_panel()
-    with tabs[15]: render_hyperspectral_panel()
-    with tabs[16]: render_bioelectric_panel()
-    with tabs[17]: render_ar_field_panel()
-    with tabs[18]: render_quantum_optimizer_panel()
-    with tabs[19]: render_indo_agri_index_panel()
-    with tabs[20]: render_greenlight_panel()
-    with tabs[21]: render_mars_mode_panel()
+    with tabs[8]:  render_vrt_prescription_panel()
+    with tabs[9]:  render_llm_agronomist_panel()
+    with tabs[10]: render_plant_doctor_cv_panel()
+    with tabs[11]: render_notification_bot_panel()
+    with tabs[12]: render_marketplace_panel()
+    with tabs[13]: render_microcredit_panel()
+    with tabs[14]: render_carbon_mrv_panel()
+    with tabs[15]: render_outbreak_predictor_panel()
+    with tabs[16]: render_hyperspectral_panel()
+    with tabs[17]: render_bioelectric_panel()
+    with tabs[18]: render_ar_field_panel()
+    with tabs[19]: render_quantum_optimizer_panel()
+    with tabs[20]: render_indo_agri_index_panel()
+    with tabs[21]: render_greenlight_panel()
+    with tabs[22]: render_mars_mode_panel()
 
 
 def render_database_browser():
@@ -15164,6 +15275,41 @@ def render_database_browser():
                        df.to_csv(index=False).encode("utf-8"),
                        file_name="indonesian_crops_database.csv",
                        mime="text/csv")
+
+    # ── OpenFarm growing guide ────────────────────────────────────────────────
+    st.divider()
+    st.markdown("#### 🌐 OpenFarm Growing Guide")
+    st.caption("Data dari openfarm.cc — community-verified growing guides (gratis, no API key)")
+    of_col1, of_col2 = st.columns([3, 1])
+    with of_col1:
+        of_query = st.text_input("Nama tanaman (English)", placeholder="e.g. tomato, lettuce, cucumber",
+                                  key="openfarm_query")
+    with of_col2:
+        of_btn = st.button("🔍 Fetch OpenFarm", key="openfarm_btn")
+    if of_btn and of_query.strip():
+        import urllib.request, urllib.parse, json as _json
+        _url = f"https://openfarm.cc/api/v1/crops/?filter={urllib.parse.quote(of_query.strip())}"
+        try:
+            with urllib.request.urlopen(_url, timeout=8) as _r:
+                _data = _json.loads(_r.read().decode())
+            _crops = _data.get("data", [])
+            if not _crops:
+                st.warning("Tidak ditemukan. Coba nama yang berbeda.")
+            else:
+                for _c in _crops[:3]:
+                    _a = _c.get("attributes", {})
+                    with st.expander(f"🌱 {_a.get('name', '—')} ({_a.get('binomial_name', '')})", expanded=True):
+                        _d1, _d2, _d3 = st.columns(3)
+                        _d1.metric("☀️ Sun", _a.get("sun_requirements") or "—")
+                        _d2.metric("💧 Sow", _a.get("sowing_method") or "—")
+                        _d3.metric("📏 Row spacing", f"{_a.get('row_spacing', '—')} cm")
+                        if _a.get("description"):
+                            st.info(_a["description"][:400])
+                        _tags = _a.get("tags_array", [])
+                        if _tags:
+                            st.markdown(" ".join(f"`{t}`" for t in _tags[:8]))
+        except Exception as _e:
+            st.error(f"OpenFarm error: {_e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
