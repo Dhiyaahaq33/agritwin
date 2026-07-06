@@ -5,7 +5,7 @@ export default function SignInPage() {
     <main className="min-h-screen flex items-center justify-center bg-gray-950">
       <div className="flex flex-col items-center gap-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-green-400">🌱 AgriTwin</h1>
+          <h1 className="text-2xl font-bold text-green-400">🌱 Cahyo AgriTwin</h1>
           <p className="text-sm text-gray-500 mt-1">AI Greenhouse Digital Twin</p>
         </div>
         <SignIn

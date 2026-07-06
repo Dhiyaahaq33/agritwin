@@ -4,13 +4,13 @@ import { PostHogProvider } from "@/components/PostHogProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AgriTwin Dashboard",
+  title: "Cahyo AgriTwin Dashboard",
   description: "AI Greenhouse Digital Twin Platform",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "AgriTwin",
+    title: "Cahyo AgriTwin",
   },
 };
 

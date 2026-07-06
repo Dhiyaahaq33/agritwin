@@ -128,7 +128,7 @@ function Dashboard() {
       {/* Header */}
       <header className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-green-400">🌱 AgriTwin Dashboard</h1>
+          <h1 className="text-2xl font-bold text-green-400">🌱 Cahyo AgriTwin Dashboard</h1>
           <p className="text-sm text-gray-500">AI Greenhouse Digital Twin</p>
         </div>
         <div className="flex items-center gap-3">
@@ -278,7 +278,7 @@ function Dashboard() {
 
       {/* Footer */}
       <footer className="mt-8 text-center text-xs text-gray-700">
-        AgriTwin v1.0 — AI Greenhouse Digital Twin Platform
+        Cahyo AgriTwin v1.0 — AI Greenhouse Digital Twin Platform
       </footer>
     </main>
   );
