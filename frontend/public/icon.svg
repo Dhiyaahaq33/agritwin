@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#1b5e20"/>
+  <!-- Leaf shape -->
+  <path d="M256 120 C320 120 400 180 400 280 C400 340 360 380 300 390 C300 390 310 320 256 280 C202 320 212 390 212 390 C152 380 112 340 112 280 C112 180 192 120 256 120 Z" fill="#4caf50"/>
+  <!-- Stem -->
+  <rect x="248" y="340" width="16" height="60" rx="8" fill="#2e7d32"/>
+</svg>
