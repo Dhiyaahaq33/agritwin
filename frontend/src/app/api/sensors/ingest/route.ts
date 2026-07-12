@@ -4,6 +4,8 @@ import { supabase } from "@/lib/supabase";
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { zone_id, readings, source = "manual" } = body;
+  if (!zone_id || !readings || typeof readings !== "object")
+    return NextResponse.json({ ok: false, error: "zone_id and readings required" }, { status: 400 });
   const rows = Object.entries(readings).map(([sensor_type, value]) => ({
     zone_id,
     sensor_type,

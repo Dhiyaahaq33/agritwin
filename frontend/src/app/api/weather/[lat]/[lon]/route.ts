@@ -17,6 +17,7 @@ export async function GET(
 
   const raw = await res.json();
   const c = raw.current;
+  if (!c) return NextResponse.json({ error: "no current weather data", detail: raw.reason ?? "" }, { status: 502 });
   const d = raw.daily ?? {};
   const forecast = (d.time ?? []).map((date: string, i: number) => ({
     date,

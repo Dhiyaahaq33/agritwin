@@ -3691,7 +3691,12 @@ class MQTTBrokerClient:
                             except Exception:
                                 pass
 
-            client = mqtt.Client(client_id=self.client_id, clean_session=True)
+            # ponytail: try new paho 2.x API, fall back to legacy 1.x
+            try:
+                client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1,
+                                     client_id=self.client_id, clean_session=True)
+            except AttributeError:
+                client = mqtt.Client(client_id=self.client_id, clean_session=True)
             client.on_connect    = _on_connect
             client.on_disconnect = _on_disconnect
             client.on_message    = _on_message
@@ -10569,7 +10574,10 @@ def main():
         )
         st.session_state["_weather_loc_sig"] = active_loc_sig
 
-    wx: WeatherData = st.session_state["wx_data"]
+    wx: WeatherData = st.session_state.get("wx_data")
+    if wx is None:
+        st.warning("⚠️ Data cuaca belum tersedia.")
+        return
 
     wx_temp  = finite_float(wx.temp_outside)
     wx_hum   = finite_float(wx.humidity_outside)
@@ -13914,8 +13922,11 @@ class RealSensorBridge:
 
     def _read_http(self) -> Dict[str, IndoSensorReading]:
         url = self.config.get("url", "http://localhost:8080/sensors")
-        r = requests.get(url, timeout=2.0)
-        data = r.json() if r.ok else {}
+        try:
+            r = requests.get(url, timeout=2.0)
+            data = r.json() if r.ok else {}
+        except Exception:
+            return self._read_simulated()
         return {k: IndoSensorReading(k, float(v), self._unit_for(k), "http")
                 for k, v in data.items() if isinstance(v, (int, float))}
 
@@ -15835,7 +15846,7 @@ def render_notification_bot_panel():
                     _tr = requests.get(
                         f"https://api.telegram.org/bot{_tg_token}/getMe", timeout=8)
                     if _tr.ok:
-                        _bn = _tr.json()["result"]["username"]
+                        _bn = _tr.json().get("result", {}).get("username", "unknown")
                         st.success(f"✅ Bot connected: @{_bn}")
                     else:
                         st.error(f"❌ Token tidak valid: {_tr.json().get('description','')}")
