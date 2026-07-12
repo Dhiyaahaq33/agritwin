@@ -1260,7 +1260,7 @@ _GROQ_MODELS = [
 _GEMINI_MODELS = [
     "gemini-2.5-flash",             # default: strong price/performance
     "gemini-2.5-flash-lite",        # fastest / lowest cost
-    "gemini-3-flash-preview",       # preview, use only if available on your account
+    # "gemini-3-flash-preview",     # BELUM RILIS — hapus dari dropdown sampai tersedia
     "gemini-2.0-flash",             # legacy fallback
     "gemini-2.0-flash-lite",        # legacy lightweight fallback
     # "gemini-1.5-flash",           # DEPRECATED Sep 2025
@@ -1390,7 +1390,7 @@ def call_llm(prompt: str, system: str = "",
             full_prompt, system, max_tokens,
             base_url="https://api.openai.com/v1",
             api_key=_get_cfg("openai_api_key"),
-            model="gpt-4o-mini",
+            model=_get_cfg("openai_model", "gpt-4o-mini"),
         )
     elif provider == LLMProvider.CLAUDE:
         return _call_claude(full_prompt, system, max_tokens)
