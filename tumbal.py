@@ -179,6 +179,8 @@ def _get_cfg(key: str, fallback: str = "") -> str:
         "ollama_model":             "OLLAMA_MODEL",
         "ollama_host":              "OLLAMA_HOST",
         "openrouter_model":         "OPENROUTER_MODEL",
+        "nvidia_api_key":           "NVIDIA_API_KEY",
+        "nvidia_nim_model":         "NVIDIA_NIM_MODEL",
         # ── Telegram ──────────────────────────────────────────────────
         "telegram_bot_token":       "TELEGRAM_BOT_TOKEN",
         "telegram_chat_id":         "TELEGRAM_CHAT_ID",
@@ -1239,6 +1241,7 @@ class LLMProvider(Enum):
     OPENROUTER = "openrouter"    # openrouter.ai — many free models
     OPENAI     = "openai"        # berbayar, sebagai opsi
     CLAUDE     = "claude"        # berbayar, sebagai opsi
+    NVIDIA_NIM = "nvidia_nim"    # build.nvidia.com — 100+ models, gratis (DGX Cloud)
 
 _LLM_PROVIDER_LABELS = {
     LLMProvider.STUB:       "🔧 Stub Lokal (tanpa internet)",
@@ -1248,7 +1251,17 @@ _LLM_PROVIDER_LABELS = {
     LLMProvider.OPENROUTER: "🌐 OpenRouter — model gratis campuran",
     LLMProvider.OPENAI:     "💳 OpenAI GPT (berbayar)",
     LLMProvider.CLAUDE:     "💳 Anthropic Claude (berbayar)",
+    LLMProvider.NVIDIA_NIM: "🟢 NVIDIA NIM — 100+ model DGX Cloud (GRATIS)",
 }
+
+_NVIDIA_NIM_MODELS = [
+    "meta/llama-3.3-70b-instruct",          # default: terbaik untuk agronomist
+    "nvidia/llama-3.1-nemotron-ultra-550b-v1", # max reasoning
+    "nvidia/nemotron-mini-4b-instruct",      # cepat/ringan
+    "mistralai/mistral-large-latest",        # multilingual terbaik
+    "deepseek-ai/deepseek-r1",              # strong reasoning
+    "microsoft/phi-4-mini-instruct",         # ringan
+]
 
 _GROQ_MODELS = [
     "llama-3.3-70b-versatile",      # flagship — terbaik, gratis
@@ -1394,6 +1407,13 @@ def call_llm(prompt: str, system: str = "",
         )
     elif provider == LLMProvider.CLAUDE:
         return _call_claude(full_prompt, system, max_tokens)
+    elif provider == LLMProvider.NVIDIA_NIM:
+        result, src = _call_nvidia_nim(full_prompt, system, max_tokens)
+        # safety filter — hanya kalau NVIDIA key tersedia
+        if not result.startswith("⚠️") and not result.startswith("❌"):
+            if not _nvidia_safety_check(result):
+                result = "⚠️ Respons diblokir oleh content safety filter."
+        return result, src
     return _llm_stub_response(prompt), "stub"
 
 
@@ -1539,6 +1559,67 @@ def _call_claude(prompt: str, system: str, max_tokens: int) -> Tuple[str, str]:
         return r.json()["content"][0]["text"].strip(), "Claude Haiku"
     except Exception as e:
         return f"❌ Claude error: {str(e)[:80]}", "claude_error"
+
+
+_NVIDIA_BASE = "https://integrate.api.nvidia.com/v1"
+
+def _call_nvidia_nim(prompt: str, system: str, max_tokens: int) -> Tuple[str, str]:
+    key = _get_cfg("nvidia_api_key")
+    if not key:
+        return "⚠️ NVIDIA API key not set. Daftar gratis di build.nvidia.com", "nvidia_error"
+    model = _get_cfg("nvidia_nim_model", _NVIDIA_NIM_MODELS[0])
+    return _call_openai_compat(prompt, system, max_tokens,
+                               base_url=_NVIDIA_BASE, api_key=key, model=model)
+
+
+def _nvidia_safety_check(text: str) -> bool:
+    """Kembalikan True jika konten AMAN. False jika flagged oleh Nemotron Safety."""
+    key = _get_cfg("nvidia_api_key")
+    if not key:
+        return True  # tanpa key, lewatkan saja
+    try:
+        r = requests.post(f"{_NVIDIA_BASE}/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={"model": "nvidia/nemotron-3.5-content-safety",
+                  "messages": [{"role": "user", "content": text}],
+                  "max_tokens": 50, "temperature": 0.0},
+            timeout=10)
+        if not r.ok:
+            return True  # fail-open: jika safety API error, tetap tampilkan
+        verdict = r.json()["choices"][0]["message"]["content"].strip().lower()
+        return "unsafe" not in verdict and "violation" not in verdict
+    except Exception:
+        return True  # fail-open
+
+
+def _nvidia_analyze_plant_image(image_b64: str, crop_name: str = "") -> Dict:
+    """Kirim foto tanaman ke llama-3.2-11b-vision → deteksi penyakit."""
+    key = _get_cfg("nvidia_api_key")
+    if not key:
+        return {"status": "error", "note": "NVIDIA API key tidak diset"}
+    context = f"Tanaman: {crop_name}. " if crop_name else ""
+    payload = {
+        "model": "meta/llama-3.2-11b-vision-instruct",
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": (
+                f"{context}Analisis gambar daun/tanaman ini. Identifikasi:\n"
+                "1. Nama penyakit (jika ada)\n2. Tingkat keparahan (ringan/sedang/berat)\n"
+                "3. Gejala yang terlihat\n4. Rekomendasi penanganan\n"
+                "Jawab singkat dan praktis dalam bahasa Indonesia."
+            )},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+        ]}],
+        "max_tokens": 512, "temperature": 0.2,
+    }
+    try:
+        r = requests.post(f"{_NVIDIA_BASE}/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json=payload, timeout=30)
+        r.raise_for_status()
+        answer = r.json()["choices"][0]["message"]["content"].strip()
+        return {"status": "ok", "diagnosis": answer, "model": "llama-3.2-11b-vision"}
+    except Exception as e:
+        return {"status": "error", "note": str(e)[:120]}
 
 
 def _llm_stub_response(prompt: str) -> str:
@@ -4330,9 +4411,8 @@ class OPCUAModbusClient:
 
 
 class CameraVisionAI:
-    """Stub: Deteksi penyakit tanaman via kamera.
-    Install : pip install opencv-python torch torchvision
-    Plug-in : implementasi capture_and_analyze() dengan model YOLO/EfficientNet.
+    """Deteksi penyakit tanaman via kamera + NVIDIA llama-3.2-11b-vision-instruct.
+    Kamera opsional (cv2) — bisa juga upload gambar manual via analyze_image_bytes().
     """
 
     SUPPORTED_DISEASES = [
@@ -4341,9 +4421,10 @@ class CameraVisionAI:
         "Virus mosaik", "Serangan thrips", "Wereng coklat",
     ]
 
-    def __init__(self, camera_id: int = 0, model_path: str = ""):
+    def __init__(self, camera_id: int = 0, model_path: str = "", crop_name: str = ""):
         self.camera_id   = camera_id
         self.model_path  = model_path
+        self.crop_name   = crop_name
         self._connected  = False
         self._last_err   = ""
 
@@ -4360,17 +4441,31 @@ class CameraVisionAI:
         return self._connected
 
     def capture_and_analyze(self) -> Dict:
-        """TODO: capture → preprocess → model inference → return detections."""
-        return {
-            "status": "stub",
-            "detections": [],
-            "note": "Hubungkan kamera + load model YOLO/EfficientNet",
-            "model": self.model_path or "belum diset",
-        }
+        """Capture dari kamera → kirim ke NVIDIA Vision API → diagnosis penyakit."""
+        try:
+            import cv2, base64                     # type: ignore
+            cap = cv2.VideoCapture(self.camera_id)
+            ok, frame = cap.read()
+            cap.release()
+            if not ok:
+                return {"status": "error", "note": "Gagal capture dari kamera"}
+            _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            img_b64 = base64.b64encode(buf.tobytes()).decode()
+            return _nvidia_analyze_plant_image(img_b64, self.crop_name)
+        except ImportError:
+            return {"status": "error", "note": "pip install opencv-python"}
+        except Exception as e:
+            return {"status": "error", "note": str(e)[:120]}
+
+    def analyze_image_bytes(self, image_bytes: bytes) -> Dict:
+        """Analisis gambar dari bytes (upload file) — tanpa kamera fisik."""
+        import base64
+        img_b64 = base64.b64encode(image_bytes).decode()
+        return _nvidia_analyze_plant_image(img_b64, self.crop_name)
 
     def status(self) -> Dict:
         return {"camera_id": self.camera_id, "connected": self._connected,
-                "model": self.model_path or "none", "error": self._last_err}
+                "model": "llama-3.2-11b-vision (NVIDIA NIM)", "error": self._last_err}
 
 
 class OTAFirmwareManager:
@@ -15533,6 +15628,7 @@ def render_llm_agronomist_panel():
         "openrouter":  ("🌐 OpenRouter",   "#1a3a3a", "#44eebb"),
         "openai":      ("🤖 OpenAI",       "#1a2a3a", "#44ccff"),
         "claude":      ("🧬 Claude",       "#2a1a3a", "#ff88cc"),
+        "nvidia_nim":  ("🟢 NVIDIA NIM",   "#1a3a1a", "#76b900"),
     }
     _badge_label, _badge_bg, _badge_color = _prov_badges.get(
         _active_prov, ("🔧 AI", "#2a2a2a", "#aaaaaa"))
@@ -15650,49 +15746,59 @@ def _cv_diagnose_simulated(filename: str, crop_id: str = "tomat") -> Dict[str, A
 
 
 def render_plant_doctor_cv_panel():
-    """Tier 1 — Upload foto daun → AI diagnosis (model ML stub, siap diganti TensorFlow Lite)."""
+    """Tier 1 — Upload foto daun → diagnosis via NVIDIA llama-3.2-11b-vision-instruct."""
     if not _STREAMLIT_OK: return
-    st.markdown("""
+    _has_nvidia = bool(_get_cfg("nvidia_api_key"))
+    st.markdown(f"""
     <div class="ai-tech-card">
         <span class="ai-badge tier1-badge">TIER 1 · COMPUTER VISION</span>
-        <h3 style="color:#55ee55;margin:8px 0;">📷 Plant Doctor — Foto → Diagnosis 2 Detik</h3>
+        <h3 style="color:#55ee55;margin:8px 0;">📷 Plant Doctor — Foto → Diagnosis AI</h3>
         <p style="color:#88ccdd;font-size:11px;">
-            MobileNet + EfficientNet stub (offline-ready). Production: TF Lite on-device, no internet needed.
+            {'✅ <b>NVIDIA llama-3.2-11b-vision-instruct</b> aktif — diagnosis real dari foto.'
+             if _has_nvidia else
+             '⚠️ NVIDIA API key belum diset — menggunakan diagnosis simulasi. Set NVIDIA_API_KEY di sidebar.'}
         </p>
     </div>
     """, unsafe_allow_html=True)
 
     crop = render_indonesian_crop_selector("doctor")
-    uploaded = st.file_uploader("📸 Upload photo of sick leaf/fruit/stem",
+    uploaded = st.file_uploader("📸 Upload foto daun/buah/batang yang sakit",
                                   type=["jpg", "jpeg", "png"], key="cv_upload")
-    use_camera = st.checkbox("📷 Or use phone camera", key="cv_cam")
+    use_camera = st.checkbox("📷 Atau gunakan kamera HP", key="cv_cam")
     if use_camera:
-        cam_img = st.camera_input("Live photo", key="cv_cam_input")
+        cam_img = st.camera_input("Foto langsung", key="cv_cam_input")
         if cam_img: uploaded = cam_img
 
     if uploaded:
-        st.image(uploaded, caption="Analyzed photo", width=400)
-        with st.spinner("🧠 AI analysis in progress..."):
-            time.sleep(0.8)  # simulate inference
-            diag = _cv_diagnose_simulated(uploaded.name, crop.id if crop else "tomat")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("🔬 Main Diagnosis", diag["diagnosis"])
-        c2.metric("🎯 Confidence", f"{diag['confidence']*100:.1f}%")
-        c3.metric("⚠️ Severity", diag["severity"])
-        st.markdown(f"""
-        <div class="prediction-box">
-        <b>💊 Recommended Action:</b><br>{diag['rekomendasi']}<br><br>
-        <b>🔍 Alternative Diagnosis (also check):</b> {', '.join(diag['alternatif'])}
-        </div>
-        """, unsafe_allow_html=True)
+        st.image(uploaded, caption="Foto yang dianalisis", width=400)
+        with st.spinner("🧠 Mengirim ke NVIDIA Vision AI..."):
+            if _has_nvidia:
+                cam_ai = CameraVisionAI(crop_name=crop.nama_id if crop else "")
+                result = cam_ai.analyze_image_bytes(uploaded.read())
+                if result["status"] == "ok":
+                    st.success("✅ Diagnosis dari NVIDIA llama-3.2-11b-vision")
+                    st.markdown(result["diagnosis"])
+                else:
+                    st.error(f"❌ {result.get('note','Error')}")
+                    st.caption("Fallback ke diagnosis simulasi:")
+                    diag = _cv_diagnose_simulated(uploaded.name, crop.id if crop else "tomat")
+                    st.info(f"**{diag['diagnosis']}** — {diag['rekomendasi']}")
+            else:
+                time.sleep(0.6)
+                diag = _cv_diagnose_simulated(uploaded.name, crop.id if crop else "tomat")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("🔬 Diagnosis", diag["diagnosis"])
+                c2.metric("🎯 Confidence", f"{diag['confidence']*100:.1f}%")
+                c3.metric("⚠️ Severity", diag["severity"])
+                st.markdown(f"**💊 Tindakan:** {diag['rekomendasi']}")
+                st.caption(f"Alternatif: {', '.join(diag['alternatif'])}")
 
-    with st.expander("📚 Disease Library Database"):
-        st.caption("38+ common crop diseases trained: PlantVillage + local Balitbangtan dataset")
-        st.markdown("- Tomato: Late Blight, Early Blight, Mosaic Virus, Yellow Leaf Curl\n"
-                    "- Rice: Blast, Bacterial Leaf Blight, Tungro, Brown Planthopper\n"
-                    "- Chili: Anthracnose, Bacterial Wilt, Gemini Virus, Thrips\n"
+    with st.expander("📚 Disease Library"):
+        st.markdown("- Tomat: Late Blight, Early Blight, Mosaic Virus, Yellow Leaf Curl\n"
+                    "- Padi: Blast, Bacterial Leaf Blight, Tungro, Wereng\n"
+                    "- Cabai: Antraknosa, Layu Bakteri, Gemini Virus, Thrips\n"
                     "- Kentang: Late Blight, Common Scab, Black Leg\n"
-                    "- ... + 30 others")
+                    "- + 30 penyakit lainnya (via NVIDIA Vision AI)")
 
 
 # ── Telegram helper ───────────────────────────────────────────────────────────
