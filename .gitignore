@@ -61,3 +61,6 @@ AGENTS_RUFLO.md
 .DS_Store
 Thumbs.db
 desktop.ini
+
+.vercel
+.env*
