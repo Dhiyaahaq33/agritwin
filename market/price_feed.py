@@ -10,10 +10,12 @@ Cache di Supabase (market_prices) dengan TTL 6 jam.
 Jika Supabase belum setup, cache in-memory.
 """
 import datetime
+import io
 import math
 import time
 from typing import Dict, Optional, Tuple
 
+import openpyxl
 import requests
 
 # ── In-memory cache ──────────────────────────────────────────────────────────
@@ -140,45 +142,80 @@ def _fetch_usd_idr_rate() -> float:
 # WORLD BANK COMMODITY PRICES (global reference)
 # ══════════════════════════════════════════════════════════════════════════════
 
-_WB_COMMODITY_MAP: Dict[str, str] = {
-    "padi":     "RICE_05",      # Rice, 5% broken, Thailand
-    "jagung":   "MAIZE",        # Maize (corn)
-    "kedelai":  "SOYBEAN",      # Soybeans
-    "kentang":  "POTATO",       # Potatoes
-    "gula":     "SUGAR_WLD",    # Sugar, world
+# World Bank does not expose commodity prices ("Pink Sheet") through its
+# country-indicator REST API (that's WDI/GEM-only data — GDP, poverty, trade,
+# etc). The DPRICE.* codes previously used here don't exist in WB's indicator
+# catalog, so this always silently returned None. The actual Pink Sheet is
+# published monthly as an Excel workbook; column name + the unit it's quoted
+# in is what identifies each commodity there.
+_WB_PINKSHEET_URL = "https://thedocs.worldbank.org/en/doc/5d903e848db1d1b83e0ec8f744e55570-0350012021/related/CMO-Historical-Data-Monthly.xlsx"
+
+# crop_id -> (column header text in the "Monthly Prices" sheet, unit)
+# "kentang" (potato) has no entry: WB's Pink Sheet doesn't track potatoes at
+# all, so it's left to fall straight through to the hardcoded BPS fallback.
+_WB_COMMODITY_MAP: Dict[str, Tuple[str, str]] = {
+    "padi":    ("Rice, Thai 5%", "$/mt"),
+    "jagung":  ("Maize", "$/mt"),
+    "kedelai": ("Soybeans", "$/mt"),
+    "gula":    ("Sugar, world", "$/kg"),
 }
 
-def _fetch_world_bank(crop_id: str) -> Optional[float]:
-    """Ambil harga komoditas dari World Bank API.
+_WB_PINKSHEET_CACHE_TTL = 24 * 3600  # workbook is only published monthly
+_WB_PINKSHEET_CACHE: Dict[str, object] = {"rows": None, "expire_ts": 0.0}
 
-    Returns harga dalam IDR/kg (converted dari USD/ton).
+
+def _load_wb_pinksheet_rows() -> Optional[list]:
+    """Download + parse the Pink Sheet workbook once, cached 24h (it's a
+    ~750KB file republished about once a month, no point refetching per crop
+    or per call)."""
+    now = time.time()
+    if _WB_PINKSHEET_CACHE["rows"] is not None and now < _WB_PINKSHEET_CACHE["expire_ts"]:
+        return _WB_PINKSHEET_CACHE["rows"]
+    try:
+        r = requests.get(_WB_PINKSHEET_URL, timeout=20, headers={"User-Agent": "AgriTwin/1.0"})
+        r.raise_for_status()
+        wb = openpyxl.load_workbook(io.BytesIO(r.content), data_only=True)
+        ws = wb["Monthly Prices"]
+        headers = [c.value for c in ws[5]]
+        rows = [[c.value for c in row] for row in ws.iter_rows(min_row=7)]
+        _WB_PINKSHEET_CACHE["rows"] = (headers, rows)
+        _WB_PINKSHEET_CACHE["expire_ts"] = now + _WB_PINKSHEET_CACHE_TTL
+        return (headers, rows)
+    except Exception:
+        return _WB_PINKSHEET_CACHE["rows"]  # stale cache beats no data
+
+
+def _fetch_world_bank(crop_id: str) -> Optional[float]:
+    """Ambil harga komoditas dari World Bank Pink Sheet (monthly Excel).
+
+    Returns harga dalam IDR/kg (converted dari USD/ton atau USD/kg).
     """
-    wb_code = _WB_COMMODITY_MAP.get(crop_id)
-    if not wb_code:
+    mapping = _WB_COMMODITY_MAP.get(crop_id)
+    if not mapping:
+        return None
+    col_name, unit = mapping
+
+    parsed = _load_wb_pinksheet_rows()
+    if not parsed:
+        return None
+    headers, rows = parsed
+
+    normalized = [(h.strip() if isinstance(h, str) else h) for h in headers]
+    try:
+        col_idx = normalized.index(col_name)
+    except ValueError:
         return None
 
-    try:
-        # World Bank Commodity Prices API
-        url = (f"https://api.worldbank.org/v2/country/IDN/indicator/"
-               f"DPRICE.{wb_code}")
-        r = requests.get(url, params={
-            "format": "json",
-            "per_page": 1,
-            "mrv": 1,  # most recent value
-        }, timeout=8, headers={"User-Agent": "AgriTwin/1.0"})
-
-        if r.ok:
-            data = r.json()
-            if len(data) > 1 and data[1]:
-                val = data[1][0].get("value")
-                if val:
-                    # Convert USD/metric ton → IDR/kg using live FX rate
-                    usd_per_ton = float(val)
-                    idr_per_usd = _fetch_usd_idr_rate()
-                    idr_per_kg = usd_per_ton * idr_per_usd / 1000.0
-                    return round(idr_per_kg)
-    except Exception:
-        pass
+    # Walk backward from the most recent month until a non-empty value is found
+    for row in reversed(rows):
+        val = row[col_idx] if col_idx < len(row) else None
+        if isinstance(val, (int, float)):
+            idr_per_usd = _fetch_usd_idr_rate()
+            if unit == "$/kg":
+                idr_per_kg = float(val) * idr_per_usd
+            else:  # $/mt
+                idr_per_kg = float(val) * idr_per_usd / 1000.0
+            return round(idr_per_kg)
     return None
 
 
