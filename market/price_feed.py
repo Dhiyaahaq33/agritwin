@@ -101,6 +101,42 @@ def _fetch_pihps(crop_id: str) -> Optional[float]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# LIVE USD/IDR EXCHANGE RATE (buat konversi harga World Bank)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_FX_FALLBACK_IDR_PER_USD = 16000.0  # dipakai kalau live rate gagal diambil
+_FX_CACHE: Dict[str, float] = {"rate": _FX_FALLBACK_IDR_PER_USD, "expire_ts": 0.0}
+
+
+def _fetch_usd_idr_rate() -> float:
+    """Kurs USD->IDR live dari frankfurter.app (gratis, tanpa API key, data resmi
+    dari European Central Bank). Di-cache pakai _CACHE_TTL yang sama kayak harga
+    komoditas; kalau fetch gagal, pakai rate terakhir yang berhasil (atau fallback
+    hardcoded kalau belum pernah berhasil sama sekali)."""
+    now = time.time()
+    if now < _FX_CACHE["expire_ts"]:
+        return _FX_CACHE["rate"]
+    try:
+        r = requests.get(
+            "https://api.frankfurter.app/latest",
+            params={"from": "USD", "to": "IDR"},
+            timeout=8,
+            headers={"User-Agent": "AgriTwin/1.0"},
+        )
+        if r.ok:
+            rate = float(r.json()["rates"]["IDR"])
+            if rate > 0:
+                _FX_CACHE["rate"] = rate
+                _FX_CACHE["expire_ts"] = now + _CACHE_TTL
+                return rate
+    except Exception:
+        pass
+    # Fetch gagal: pakai rate terakhir yang pernah berhasil (walau cache-nya expired),
+    # bukan langsung jatuh ke hardcoded, biar gak "downgrade" akurasi tanpa perlu.
+    return _FX_CACHE["rate"]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # WORLD BANK COMMODITY PRICES (global reference)
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -136,10 +172,10 @@ def _fetch_world_bank(crop_id: str) -> Optional[float]:
             if len(data) > 1 and data[1]:
                 val = data[1][0].get("value")
                 if val:
-                    # Convert USD/metric ton → IDR/kg
-                    # Approximate rate: 1 USD ≈ 16,000 IDR
+                    # Convert USD/metric ton → IDR/kg using live FX rate
                     usd_per_ton = float(val)
-                    idr_per_kg = usd_per_ton * 16.0  # /1000 * 16000
+                    idr_per_usd = _fetch_usd_idr_rate()
+                    idr_per_kg = usd_per_ton * idr_per_usd / 1000.0
                     return round(idr_per_kg)
     except Exception:
         pass
